@@ -7,6 +7,8 @@ services:
     buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: python -u bot.py
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - key: BOT_TOKEN
         sync: false
       - key: OWNER_ID
