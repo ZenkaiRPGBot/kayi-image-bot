@@ -14,10 +14,12 @@ def format_file_size(size_bytes: int) -> str:
         return f"{size_bytes / 1024:.1f} KB"
     return f"{size_bytes} B"
 
-async def upload_to_catbox(session: aiohttp.ClientSession, file_bytes: bytes, filename: str, mime_type: str) -> str:
+async def upload_to_catbox(session: aiohttp.ClientSession, file_bytes: bytes, filename: str, mime_type: str, userhash: str = "") -> str:
     """Uploads file to Catbox.moe (supports up to 200MB, permanent hosting)."""
     data = aiohttp.FormData()
     data.add_field("reqtype", "fileupload")
+    if userhash:
+        data.add_field("userhash", userhash)
     data.add_field(
         "fileToUpload",
         file_bytes,
@@ -60,7 +62,7 @@ async def upload_to_imgdb(session: aiohttp.ClientSession, file_bytes: bytes, fil
             raise ValueError("imgdb missing url")
         raise RuntimeError(f"imgdb HTTP {resp.status}")
 
-async def smart_upload(session: aiohttp.ClientSession, file_bytes: bytes, filename: str, mime_type: str, preferred: str = "catbox") -> Tuple[str, str]:
+async def smart_upload(session: aiohttp.ClientSession, file_bytes: bytes, filename: str, mime_type: str, preferred: str = "catbox", userhash: str = "") -> Tuple[str, str]:
     """
     Uploads using preferred provider, automatically falling back to secondary if primary fails.
     Returns: (direct_url, provider_name)
@@ -71,7 +73,7 @@ async def smart_upload(session: aiohttp.ClientSession, file_bytes: bytes, filena
     for prov in providers:
         try:
             if prov == "catbox":
-                url = await upload_to_catbox(session, file_bytes, filename, mime_type)
+                url = await upload_to_catbox(session, file_bytes, filename, mime_type, userhash=userhash)
                 return url, "Catbox.moe"
             elif prov == "imgdb":
                 url = await upload_to_imgdb(session, file_bytes, filename, mime_type)
@@ -81,6 +83,28 @@ async def smart_upload(session: aiohttp.ClientSession, file_bytes: bytes, filena
             continue
 
     raise RuntimeError("All image providers failed: " + "; ".join(errors))
+
+async def delete_from_catbox(session: aiohttp.ClientSession, file_url: str, userhash: str) -> bool:
+    """Deletes a file from Catbox.moe if userhash is provided."""
+    if not userhash or not file_url:
+        return False
+    try:
+        filename = file_url.split("/")[-1].strip()
+        data = aiohttp.FormData()
+        data.add_field("reqtype", "deletefiles")
+        data.add_field("userhash", userhash)
+        data.add_field("files", filename)
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+
+        async with session.post(CATBOX_API, data=data, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+            text = (await resp.text()).strip()
+            return resp.status == 200 and "successfully" in text.lower()
+    except Exception as e:
+        print(f"[catbox_delete] Error: {e}")
+        return False
 
 def generate_embed_codes(url: str, alt_text: str = "image") -> dict:
     """Generates ready-to-copy Markdown, HTML, and BBCode embeds."""

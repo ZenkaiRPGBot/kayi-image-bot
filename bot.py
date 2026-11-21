@@ -19,10 +19,12 @@ from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, BOT_START_TIME,
     BRAND_NAME, BOT_USERNAME, COMMUNITY_URL,
     RENDER_EMAIL, RENDER_SERVICE_NAME, RENDER_REPO,
-    RENDER_USED_HOURS, DEFAULT_PROVIDER, IST
+    RENDER_USED_HOURS, DEFAULT_PROVIDER, CATBOX_USERHASH, IST
 )
 import database as db
-from uploader_service import smart_upload, format_file_size, generate_embed_codes
+from uploader_service import (
+    smart_upload, format_file_size, generate_embed_codes, delete_from_catbox
+)
 from keep_alive import start_web_server
 
 dp = Dispatcher()
@@ -231,7 +233,8 @@ async def handle_media_upload(message: types.Message, bot: Bot, file_id: str, fi
                 file_bytes=file_bytes,
                 filename=filename,
                 mime_type=mime_type,
-                preferred=DEFAULT_PROVIDER
+                preferred=DEFAULT_PROVIDER,
+                userhash=CATBOX_USERHASH
             )
 
             # Record in database
@@ -267,17 +270,7 @@ async def handle_media_upload(message: types.Message, bot: Bot, file_id: str, fi
         "<i>Tap buttons below to open, copy, or view embeds:</i>"
     )
 
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Open Image 🌐", url=direct_url, style="primary"),
-            InlineKeyboardButton(text="Copy Link 📋", copy_text=CopyTextButton(text=direct_url), style="success")
-        ],
-        [
-            InlineKeyboardButton(text="Markdown 📝", callback_data=f"embed:md:{upload_id}"),
-            InlineKeyboardButton(text="HTML Embed 💻", callback_data=f"embed:html:{upload_id}"),
-            InlineKeyboardButton(text="BBCode 🏷️", callback_data=f"embed:bbcode:{upload_id}")
-        ]
-    ])
+    markup = build_upload_markup(direct_url, upload_id)
 
     await message.reply(
         card_text,
@@ -285,6 +278,22 @@ async def handle_media_upload(message: types.Message, bot: Bot, file_id: str, fi
         reply_markup=markup,
         link_preview_options=types.LinkPreviewOptions(is_disabled=True)
     )
+
+def build_upload_markup(direct_url: str, upload_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Open Image 🌐", url=direct_url, style="primary"),
+            InlineKeyboardButton(text="Copy Link 📋", copy_text=CopyTextButton(text=direct_url), style="success")
+        ],
+        [
+            InlineKeyboardButton(text="Markdown 📝", callback_data=f"embed:md:{upload_id}"),
+            InlineKeyboardButton(text="HTML Embed 💻", callback_data=f"embed:html:{upload_id}")
+        ],
+        [
+            InlineKeyboardButton(text="BBCode 🏷️", callback_data=f"embed:bbcode:{upload_id}"),
+            InlineKeyboardButton(text="Delete File 🗑️", callback_data=f"del:ask:{upload_id}", style="danger")
+        ]
+    ])
 
 # ==============================================================================
 # COMMAND HANDLERS
@@ -520,6 +529,79 @@ async def cb_embed_bbcode(callback: types.CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     await callback.answer("BBCode generated!")
+
+@dp.callback_query(F.data.startswith("del:ask:"))
+async def cb_delete_ask(callback: types.CallbackQuery):
+    upload_id = int(callback.data.split(":")[2])
+    upload = await db.get_upload_by_id(upload_id)
+    if not upload:
+        await callback.answer("Upload record not found or already deleted.", show_alert=True)
+        return
+
+    # Check permission: only uploader or bot owner
+    if callback.from_user.id != upload["user_id"] and callback.from_user.id != OWNER_ID:
+        await callback.answer("⚠️ You can only delete your own uploads.", show_alert=True)
+        return
+
+    confirm_markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⚠️ Confirm Delete 🗑️", callback_data=f"del:confirm:{upload_id}", style="danger"),
+            InlineKeyboardButton(text="Cancel ↩️", callback_data=f"del:cancel:{upload_id}")
+        ]
+    ])
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=confirm_markup)
+    except TelegramBadRequest:
+        pass
+    await callback.answer("Confirm deletion?")
+
+@dp.callback_query(F.data.startswith("del:cancel:"))
+async def cb_delete_cancel(callback: types.CallbackQuery):
+    upload_id = int(callback.data.split(":")[2])
+    upload = await db.get_upload_by_id(upload_id)
+    if not upload:
+        await callback.answer("Upload record not found.", show_alert=True)
+        return
+
+    original_markup = build_upload_markup(upload["url"], upload_id)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=original_markup)
+    except TelegramBadRequest:
+        pass
+    await callback.answer("Cancelled.")
+
+@dp.callback_query(F.data.startswith("del:confirm:"))
+async def cb_delete_confirm(callback: types.CallbackQuery):
+    upload_id = int(callback.data.split(":")[2])
+    upload = await db.get_upload_by_id(upload_id)
+    if not upload:
+        await callback.answer("File was already deleted.", show_alert=True)
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        return
+
+    # Check permission: only uploader or bot owner
+    if callback.from_user.id != upload["user_id"] and callback.from_user.id != OWNER_ID:
+        await callback.answer("⚠️ You can only delete your own uploads.", show_alert=True)
+        return
+
+    # 1. Delete from Catbox if userhash is set and provider was Catbox
+    if CATBOX_USERHASH and "catbox" in upload.get("provider", "").lower():
+        await delete_from_catbox(HTTP_SESSION, upload["url"], CATBOX_USERHASH)
+
+    # 2. Delete from database & deduplication cache
+    await db.delete_upload(upload_id)
+
+    # 3. Delete message from chat
+    try:
+        await callback.message.delete()
+    except TelegramBadRequest:
+        pass
+
+    await callback.answer("🗑️ File deleted successfully!", show_alert=True)
 
 @dp.callback_query(F.data == "user:myuploads")
 async def cb_user_myuploads(callback: types.CallbackQuery):

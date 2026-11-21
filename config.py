@@ -37,3 +37,4 @@ if not PING_URL and os.getenv("RENDER"):
 # Storage Settings
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "image_bot.db")
 DEFAULT_PROVIDER = "catbox"  # 'catbox' (up to 200MB, permanent) or 'imgdb'
+CATBOX_USERHASH = os.getenv("CATBOX_USERHASH", "").strip()

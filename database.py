@@ -77,6 +77,25 @@ async def record_upload(user_id: int, file_id: str, file_unique_id: str, file_na
         await db.commit()
         return cur.lastrowid
 
+async def get_upload_by_id(upload_id: int) -> dict | None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM uploads WHERE id = ?", (upload_id,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+async def delete_upload(upload_id: int) -> dict | None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM uploads WHERE id = ?", (upload_id,)) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return None
+            upload_data = dict(row)
+        await db.execute("DELETE FROM uploads WHERE id = ?", (upload_id,))
+        await db.commit()
+        return upload_data
+
 async def get_user_recent_uploads(user_id: int, limit: int = 5) -> list[dict]:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
