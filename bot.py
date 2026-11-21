@@ -9,7 +9,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton, CopyTextButton,
     BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 )
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -202,89 +202,89 @@ async def send_restart_notification(bot: Bot):
 # CORE IMAGE UPLOAD HANDLER
 # ==============================================================================
 
-async def handle_media_upload(message: types.Message, bot: Bot, file_id: str, filename: str, mime_type: str, file_size: int):
-    status_msg = await message.reply("⚡ <i>Uploading image to high-speed cloud...</i>", parse_mode=ParseMode.HTML)
+async def handle_media_upload(message: types.Message, bot: Bot, file_id: str, file_unique_id: str, filename: str, mime_type: str, file_size: int):
+    # 1. Deduplication Cache Check
+    cached = await db.find_existing_upload(file_unique_id)
+    if cached:
+        direct_url = cached["url"]
+        provider_name = cached["provider"]
+        size_str = format_file_size(cached["file_size"])
+        upload_id = cached["id"]
+        is_cached = True
+    else:
+        is_cached = False
+        status_msg = await message.reply("⚡ <i>Uploading image to high-speed cloud...</i>", parse_mode=ParseMode.HTML)
 
-    try:
-        # Download file directly into memory
-        file_info = await bot.get_file(file_id)
-        if not file_info.file_path:
-            await status_msg.edit_text("❌ <i>Failed to fetch image from Telegram servers.</i>", parse_mode=ParseMode.HTML)
+        try:
+            # Download file into memory
+            file_info = await bot.get_file(file_id)
+            if not file_info.file_path:
+                await status_msg.edit_text("❌ <i>Failed to fetch image from Telegram servers.</i>", parse_mode=ParseMode.HTML)
+                return
+
+            file_bytes_io = await bot.download_file(file_info.file_path)
+            file_bytes = file_bytes_io.read()
+
+            # Upload to cloud
+            direct_url, provider_name = await smart_upload(
+                session=HTTP_SESSION,
+                file_bytes=file_bytes,
+                filename=filename,
+                mime_type=mime_type,
+                preferred=DEFAULT_PROVIDER
+            )
+
+            # Record in database
+            upload_id = await db.record_upload(
+                user_id=message.from_user.id,
+                file_id=file_id,
+                file_unique_id=file_unique_id,
+                file_name=filename,
+                file_size=len(file_bytes),
+                provider=provider_name,
+                url=direct_url
+            )
+
+            size_str = format_file_size(len(file_bytes))
+            await status_msg.delete()
+
+        except Exception as e:
+            print(f"[upload] Error: {e}")
+            await status_msg.edit_text(
+                f"❌ <b>Upload failed:</b> <code>{html.escape(str(e))}</code>\n\n<i>Please try again in a few seconds.</i>",
+                parse_mode=ParseMode.HTML
+            )
             return
 
-        file_bytes_io = await bot.download_file(file_info.file_path)
-        file_bytes = file_bytes_io.read()
+    # 2. Build Single Clean Response Card with pointer emoji and colorful buttons
+    tag = " ⚡" if is_cached else ""
+    card_text = (
+        f"<b>Image Link Ready ✅{tag}</b>\n\n"
+        f"<code>{direct_url}</code>\n\n"
+        f"• <b>File:</b> <code>{html.escape(filename)}</code>\n"
+        f"• <b>Size:</b> <code>{size_str}</code>\n"
+        f"• <b>Host:</b> <code>{provider_name}</code> (Permanent)\n\n"
+        "<i>Tap buttons below to open, copy, or view embeds:</i>"
+    )
 
-        # Upload using smart multi-provider engine (Catbox with imgdb fallback)
-        direct_url, provider_name = await smart_upload(
-            session=HTTP_SESSION,
-            file_bytes=file_bytes,
-            filename=filename,
-            mime_type=mime_type,
-            preferred=DEFAULT_PROVIDER
-        )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Open Image 🌐", url=direct_url, style="primary"),
+            InlineKeyboardButton(text="Copy Link 📋", copy_text=CopyTextButton(text=direct_url), style="success")
+        ],
+        [
+            InlineKeyboardButton(text="Markdown 📝", callback_data=f"embed:md:{upload_id}"),
+            InlineKeyboardButton(text="HTML Embed 💻", callback_data=f"embed:html:{upload_id}"),
+            InlineKeyboardButton(text="BBCode 🏷️", callback_data=f"embed:bbcode:{upload_id}")
+        ]
+    ])
 
-        # Record in database
-        upload_id = await db.record_upload(
-            user_id=message.from_user.id,
-            file_id=file_id,
-            file_name=filename,
-            file_size=len(file_bytes),
-            provider=provider_name,
-            url=direct_url
-        )
-
-        size_str = format_file_size(len(file_bytes))
-        embeds = generate_embed_codes(direct_url, alt_text=filename.split(".")[0])
-
-        # Delete status message
-        await status_msg.delete()
-
-        # 1. Send separate Direct Link header & 1-tap copy block
-        await message.reply("<b>Direct Image Link 👇</b>", parse_mode=ParseMode.HTML)
-        await message.reply(
-            f"<code>{direct_url}</code>",
-            parse_mode=ParseMode.HTML,
-            link_preview_options=types.LinkPreviewOptions(is_disabled=True)
-        )
-
-        # 2. Send separate Markdown header & 1-tap copy block
-        await message.reply("<b>Markdown Embed 👇</b>", parse_mode=ParseMode.HTML)
-        await message.reply(
-            f"<code>{html.escape(embeds['markdown'])}</code>",
-            parse_mode=ParseMode.HTML,
-            link_preview_options=types.LinkPreviewOptions(is_disabled=True)
-        )
-
-        # 3. Send Summary Card with colorful interactive buttons
-        card_text = (
-            f"<b>{BRAND_NAME} · Upload Complete ✅</b>\n\n"
-            f"• <b>File:</b> <code>{html.escape(filename)}</code>\n"
-            f"• <b>Size:</b> <code>{size_str}</code>\n"
-            f"• <b>Host:</b> <code>{provider_name}</code> (Permanent)\n"
-            f"• <b>ID:</b> <code>#{upload_id}</code>\n\n"
-            "<i>Tap below to open or view additional embed formats:</i>"
-        )
-
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Open Image 🌐", url=direct_url, style="primary"),
-                InlineKeyboardButton(text="HTML Tag 📝", callback_data=f"embed:html:{upload_id}", style="success")
-            ],
-            [
-                InlineKeyboardButton(text="BBCode 📋", callback_data=f"embed:bbcode:{upload_id}"),
-                InlineKeyboardButton(text="Kayi TV 👑", url=COMMUNITY_URL)
-            ]
-        ])
-
-        await message.reply(card_text, parse_mode=ParseMode.HTML, reply_markup=markup)
-
-    except Exception as e:
-        print(f"[upload] Error: {e}")
-        await status_msg.edit_text(
-            f"❌ <b>Upload failed:</b> <code>{html.escape(str(e))}</code>\n\n<i>Please try again in a few seconds.</i>",
-            parse_mode=ParseMode.HTML
-        )
+    await message.reply(
+        card_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=markup,
+        link_preview_options=types.LinkPreviewOptions(is_disabled=True)
+    )
 
 # ==============================================================================
 # COMMAND HANDLERS
@@ -397,13 +397,13 @@ async def cmd_usage(message: types.Message, bot: Bot):
 
 @dp.message(F.photo)
 async def on_photo_received(message: types.Message, bot: Bot):
-    # Get highest quality photo
     photo = message.photo[-1]
     filename = f"photo_{photo.file_unique_id}.jpg"
     await handle_media_upload(
         message=message,
         bot=bot,
         file_id=photo.file_id,
+        file_unique_id=photo.file_unique_id,
         filename=filename,
         mime_type="image/jpeg",
         file_size=photo.file_size or 0
@@ -413,7 +413,6 @@ async def on_photo_received(message: types.Message, bot: Bot):
 async def on_document_received(message: types.Message, bot: Bot):
     doc = message.document
     mime = doc.mime_type or ""
-    # Support images, gifs, webp, and video clips up to 200MB
     if not (mime.startswith("image/") or mime.startswith("video/") or doc.file_name.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".mp4"))):
         await message.reply("⚠️ <i>Please send an image or graphic file (PNG, JPG, WebP, GIF, SVG).</i>", parse_mode=ParseMode.HTML)
         return
@@ -427,6 +426,7 @@ async def on_document_received(message: types.Message, bot: Bot):
         message=message,
         bot=bot,
         file_id=doc.file_id,
+        file_unique_id=doc.file_unique_id,
         filename=filename,
         mime_type=mime or "application/octet-stream",
         file_size=doc.file_size or 0
@@ -440,6 +440,7 @@ async def on_animation_received(message: types.Message, bot: Bot):
         message=message,
         bot=bot,
         file_id=anim.file_id,
+        file_unique_id=anim.file_unique_id,
         filename=filename,
         mime_type=anim.mime_type or "video/mp4",
         file_size=anim.file_size or 0
@@ -453,6 +454,7 @@ async def on_sticker_received(message: types.Message, bot: Bot):
         message=message,
         bot=bot,
         file_id=sticker.file_id,
+        file_unique_id=sticker.file_unique_id,
         filename=filename,
         mime_type="image/webp",
         file_size=sticker.file_size or 0
@@ -461,6 +463,25 @@ async def on_sticker_received(message: types.Message, bot: Bot):
 # ==============================================================================
 # CALLBACK QUERY HANDLERS
 # ==============================================================================
+
+@dp.callback_query(F.data.startswith("embed:md:"))
+async def cb_embed_md(callback: types.CallbackQuery):
+    upload_id = int(callback.data.split(":")[2])
+    async with db.aiosqlite.connect(db.DATABASE_PATH) as conn:
+        conn.row_factory = db.aiosqlite.Row
+        async with conn.execute("SELECT * FROM uploads WHERE id = ?", (upload_id,)) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        await callback.answer("Upload record not found.", show_alert=True)
+        return
+
+    md_code = f"![image]({row['url']})"
+    await callback.message.reply(
+        f"<b>Markdown Embed Code 👇</b>\n\n<code>{html.escape(md_code)}</code>",
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer("Markdown code generated!")
 
 @dp.callback_query(F.data.startswith("embed:html:"))
 async def cb_embed_html(callback: types.CallbackQuery):
