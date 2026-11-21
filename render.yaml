@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: kayi-image-bot
+    env: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: python -u bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_ID
+        value: "986380678"
+      - key: LOG_CHANNEL_ID
+        value: "-1004495645007"
+      - key: RENDER_EMAIL
+        value: "giyanrtjd@gmail.com"
+      - key: RENDER_SERVICE_NAME
+        value: "kayi-image-bot"
+      - key: RENDER_USED_HOURS
+        value: "0"
+      - key: PYTHONUNBUFFERED
+        value: "1"
