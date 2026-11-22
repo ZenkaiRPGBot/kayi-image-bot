@@ -17,7 +17,8 @@ from aiogram.exceptions import TelegramBadRequest
 
 from config import (
     BOT_TOKEN, OWNER_ID, LOG_CHANNEL_ID, BOT_START_TIME,
-    BRAND_NAME, BOT_USERNAME, COMMUNITY_URL,
+    BRAND_NAME, BOT_USERNAME, COMMUNITY_URL, DEVELOPER_URL,
+    WELCOME_VIDEO_FILE_ID,
     RENDER_EMAIL, RENDER_SERVICE_NAME, RENDER_REPO,
     RENDER_USED_HOURS, DEFAULT_PROVIDER, CATBOX_USERHASH, IST
 )
@@ -26,8 +27,12 @@ from uploader_service import (
     smart_upload, format_file_size, generate_embed_codes, delete_from_catbox
 )
 from keep_alive import start_web_server
+from fsub import FSubMiddleware, check_channel_membership
 
 dp = Dispatcher()
+dp.message.outer_middleware(FSubMiddleware())
+dp.callback_query.outer_middleware(FSubMiddleware())
+
 HTTP_SESSION: aiohttp.ClientSession | None = None
 
 # ==============================================================================
@@ -296,50 +301,107 @@ def build_upload_markup(direct_url: str, upload_id: int) -> InlineKeyboardMarkup
     ])
 
 # ==============================================================================
+# UI STRINGS & KEYBOARD BUILDERS
+# ==============================================================================
+
+WELCOME_CAPTION = (
+    "<b>Welcome to Kayi Image to Link</b>\n\n"
+    "Turn your images and supported files into shareable links in seconds.\n\n"
+    "Simply send a file to get started.\n\n"
+    "✦ Quick link generation\n"
+    "✦ Easy sharing\n"
+    "✦ Simple file management\n\n"
+    "<i>Send an image or file to begin.</i>"
+)
+
+HOW_TO_USE_TEXT = (
+    "<b>How to Use Kayi Image to Link</b> 📖\n\n"
+    "1. <b>Send any Image or Photo:</b> Send it directly in this chat.\n"
+    "2. <b>High Quality / Original:</b> Send as a <b>Document</b> to prevent Telegram compression.\n"
+    "3. <b>Instant Link:</b> Receive a permanent high-speed direct link with 1-tap copy buttons.\n"
+    "4. <b>Embed Codes:</b> Generate Markdown, HTML, and BBCode embeds with one tap.\n\n"
+    "<i>Supported: JPG, PNG, WebP, GIF, SVG, BMP, MP4 clips up to 200MB.</i>"
+)
+
+HELP_TEXT = (
+    "<b>Kayi Image to Link — Help & Commands</b> 💡\n\n"
+    "• <code>/start</code> — Open welcome screen\n"
+    "• <code>/myuploads</code> — View your recent uploads\n"
+    "• <code>/ping</code> — Check bot latency & uptime\n"
+    "• <code>/help</code> — View instructions\n\n"
+    "<b>Official Channel:</b> @KayiBots\n"
+    "<b>Developer:</b> @qouba"
+)
+
+def build_welcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📖 How to Use", callback_data="help:how_to_use", style="primary"),
+            InlineKeyboardButton(text="📁 My Uploads", callback_data="user:myuploads", style="success")
+        ],
+        [
+            InlineKeyboardButton(text="❓ Help", callback_data="help:main"),
+            InlineKeyboardButton(text="📢 Updates", url=COMMUNITY_URL)
+        ],
+        [
+            InlineKeyboardButton(text="👨‍💻 Developer", url=DEVELOPER_URL)
+        ]
+    ])
+
+def build_help_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="◀️ Back to Home", callback_data="home")
+        ]
+    ])
+
+async def send_welcome_screen(bot: Bot, chat_id: int):
+    """Sends the cinematic welcome screen using cached Telegram video file_id."""
+    markup = build_welcome_keyboard()
+    if WELCOME_VIDEO_FILE_ID:
+        try:
+            await bot.send_video(
+                chat_id=chat_id,
+                video=WELCOME_VIDEO_FILE_ID,
+                caption=WELCOME_CAPTION,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+                supports_streaming=True
+            )
+            print(f"[welcome] START_CINEMATIC_SUCCESS chat_id={chat_id}")
+            return
+        except Exception as e:
+            print(f"[welcome] START_CINEMATIC_FAILURE chat_id={chat_id} error={type(e).__name__}: {e}")
+    else:
+        print(f"[welcome] START_CINEMATIC_FAILURE chat_id={chat_id} error=NO_FILE_ID_CONFIGURED")
+
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=WELCOME_CAPTION,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup
+        )
+        print(f"[welcome] START_TEXT_FALLBACK chat_id={chat_id}")
+    except Exception as fb_err:
+        print(f"[welcome] START_TEXT_FALLBACK_FAILURE chat_id={chat_id} error={type(fb_err).__name__}: {fb_err}")
+
+# ==============================================================================
 # COMMAND HANDLERS
 # ==============================================================================
 
 @dp.message(CommandStart())
-async def cmd_start(message: types.Message):
-    await db.touch_user(message.from_user.id)
-    text = (
-        f"<b>Welcome to {BRAND_NAME}!</b> 🚀\n\n"
-        "Convert any image, photo, sticker, or GIF into a **permanent high-speed direct link** with 1-tap copy blocks.\n\n"
-        "<b>Supported Formats:</b>\n"
-        "• <b>Photos & Documents:</b> JPG, PNG, WebP, SVG, BMP\n"
-        "• <b>Animated:</b> GIFs & MP4 Clips (Up to 200MB)\n"
-        "• <b>Stickers:</b> Animated & Static Telegram stickers\n\n"
-        "<b>Features:</b>\n"
-        "• Permanent Cloud Hosting (Never expires)\n"
-        "• Separate 1-tap copy blocks for Direct URL & Markdown\n"
-        "• Ready-to-use HTML & BBCode embeds\n\n"
-        "👉 <b>Send or forward any image below to get started!</b>"
-    )
-
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Recent Uploads 📂", callback_data="user:myuploads", style="primary"),
-            InlineKeyboardButton(text="Channel 👑", url=COMMUNITY_URL, style="success")
-        ]
-    ])
-
-    await message.reply(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+async def cmd_start(message: types.Message, bot: Bot | None = None):
+    if bot is None:
+        bot = message.bot
+    user_id = message.from_user.id
+    await db.touch_user(user_id)
+    await send_welcome_screen(bot, user_id)
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    text = (
-        f"<b>{BRAND_NAME} — Help & Instructions</b> 📖\n\n"
-        "<b>How to use:</b>\n"
-        "1. Simply send any photo or image to the chat.\n"
-        "2. To preserve 100% original uncompressed quality, send it as a <b>File/Document</b>.\n"
-        "3. The bot uploads the image and gives you instant 1-tap copy links.\n\n"
-        "<b>Commands:</b>\n"
-        "• <code>/start</code> — Start bot & overview\n"
-        "• <code>/myuploads</code> — View your recent 5 uploads\n"
-        "• <code>/ping</code> — Check bot latency & uptime\n"
-        "• <code>/help</code> — This help message"
-    )
-    await message.reply(text, parse_mode=ParseMode.HTML)
+    await db.touch_user(message.from_user.id)
+    await message.reply(HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=build_help_keyboard())
 
 @dp.message(Command("myuploads"))
 async def cmd_myuploads(message: types.Message):
@@ -472,6 +534,109 @@ async def on_sticker_received(message: types.Message, bot: Bot):
 # ==============================================================================
 # CALLBACK QUERY HANDLERS
 # ==============================================================================
+
+@dp.callback_query(F.data == "fsub:verify")
+async def cb_fsub_verify(callback: types.CallbackQuery, bot: Bot | None = None):
+    if bot is None:
+        bot = callback.bot
+    user_id = callback.from_user.id
+    await db.touch_user(user_id)
+
+    await callback.answer("Checking membership...")
+
+    is_member, status = await check_channel_membership(
+        bot=bot,
+        user_id=user_id,
+        bypass_cache=True
+    )
+
+    if is_member:
+        try:
+            await callback.message.delete()
+        except Exception:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+        await send_welcome_screen(bot, user_id)
+    else:
+        if status in ("left", "kicked") or (status == "restricted" and not is_member):
+            await callback.answer(
+                "You haven't joined @KayiBots yet. Please join the channel and tap I've Joined.",
+                show_alert=True
+            )
+        else:
+            await callback.answer(
+                "Membership check unavailable right now. Please try again shortly.",
+                show_alert=True
+            )
+
+@dp.callback_query(F.data == "home")
+async def cb_home(callback: types.CallbackQuery, bot: Bot | None = None):
+    if bot is None:
+        bot = callback.bot
+    user_id = callback.from_user.id
+    await db.touch_user(user_id)
+    if callback.message.video:
+        try:
+            await callback.message.edit_caption(
+                caption=WELCOME_CAPTION,
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_welcome_keyboard()
+            )
+            await callback.answer()
+            return
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e).lower():
+                await callback.answer()
+                return
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await send_welcome_screen(bot, user_id)
+    await callback.answer()
+
+@dp.callback_query(F.data == "help:main")
+async def cb_help_main(callback: types.CallbackQuery):
+    await db.touch_user(callback.from_user.id)
+    if callback.message.video:
+        try:
+            await callback.message.edit_caption(
+                caption=HELP_TEXT,
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_help_keyboard()
+            )
+            await callback.answer()
+            return
+        except TelegramBadRequest:
+            pass
+    try:
+        await callback.message.edit_text(HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=build_help_keyboard())
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
+
+@dp.callback_query(F.data == "help:how_to_use")
+async def cb_how_to_use(callback: types.CallbackQuery):
+    await db.touch_user(callback.from_user.id)
+    if callback.message.video:
+        try:
+            await callback.message.edit_caption(
+                caption=HOW_TO_USE_TEXT,
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_help_keyboard()
+            )
+            await callback.answer()
+            return
+        except TelegramBadRequest:
+            pass
+    try:
+        await callback.message.edit_text(HOW_TO_USE_TEXT, parse_mode=ParseMode.HTML, reply_markup=build_help_keyboard())
+    except TelegramBadRequest:
+        pass
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("embed:md:"))
 async def cb_embed_md(callback: types.CallbackQuery):
@@ -647,7 +812,8 @@ async def main():
 
     print(f"{BRAND_NAME} is active. Ready to process images.")
     try:
-        await dp.start_polling(bot)
+        handle_signals = (sys.platform != "win32")
+        await dp.start_polling(bot, handle_signals=handle_signals)
     finally:
         if HTTP_SESSION and not HTTP_SESSION.closed:
             await HTTP_SESSION.close()

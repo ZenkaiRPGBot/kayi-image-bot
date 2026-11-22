@@ -20,7 +20,20 @@ LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID", "-1004495645007").strip()
 # Brand Identity
 BRAND_NAME = "Kayi Image to Link"
 BOT_USERNAME = os.getenv("BOT_USERNAME", "@KayiImgBot")
-COMMUNITY_URL = os.getenv("COMMUNITY_URL", "https://t.me/kayitv")
+COMMUNITY_URL = "https://t.me/KayiBots"
+DEVELOPER_URL = "https://t.me/qouba"
+
+# Cinematic Welcome Configuration
+WELCOME_VIDEO_FILE_ID = os.getenv(
+    "WELCOME_VIDEO_FILE_ID",
+    "BAACAgUAAxkDAAM4awK8BSNRgkSOKPpph1MwCkrDvu0AArAgAALOyRlULZTv2Wk3iOk9BA"
+).strip()
+
+# Mandatory Channel Subscription (FSub)
+FSUB_CHANNEL = os.getenv("FSUB_CHANNEL", "@KayiBots").strip()
+FSUB_CHANNEL_URL = os.getenv("FSUB_CHANNEL_URL", COMMUNITY_URL).strip()
+FSUB_CACHE_TTL = int(os.getenv("FSUB_CACHE_TTL", "45"))
+FSUB_TIMEOUT = float(os.getenv("FSUB_TIMEOUT", "5.0"))
 
 # Cloud Hosting Metadata
 RENDER_EMAIL = os.getenv("RENDER_EMAIL", "2305101270081@paruluniversity.ac.in")

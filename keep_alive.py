@@ -1,9 +1,21 @@
 import os
+import subprocess
 import asyncio
 from datetime import datetime
 import aiohttp
 from aiohttp import web
-from config import PORT, PING_URL, BRAND_NAME, IST
+from config import PORT, PING_URL, BRAND_NAME, IST, BOT_START_TIME
+
+def get_current_git_commit() -> str:
+    """Retrieves current short commit hash for deploy verification."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(__file__),
+            text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        return "unknown"
 
 async def handle_ping(request):
     now_str = datetime.now(IST).strftime("%I:%M:%S %p IST · %b %d")
@@ -11,6 +23,20 @@ async def handle_ping(request):
         text=f"{BRAND_NAME} is active & healthy.\nTime: {now_str}\nStatus: 200 OK",
         content_type="text/plain"
     )
+
+async def handle_health(request):
+    now = datetime.now(IST)
+    uptime_sec = int((now - BOT_START_TIME).total_seconds())
+    mins, secs = divmod(uptime_sec, 60)
+    hours, mins = divmod(mins, 60)
+    uptime_str = f"{hours}h {mins}m {secs}s" if hours else f"{mins}m {secs}s"
+
+    return web.json_response({
+        "status": "ok",
+        "service": "kayi-image-bot",
+        "commit": get_current_git_commit(),
+        "uptime": uptime_str
+    })
 
 async def self_ping_loop():
     """Keeps the service awake on Render Free Tier."""
@@ -31,7 +57,7 @@ async def start_web_server():
     app = web.Application()
     app.router.add_get("/", handle_ping)
     app.router.add_get("/ping", handle_ping)
-    app.router.add_get("/health", handle_ping)
+    app.router.add_get("/health", handle_health)
 
     runner = web.AppRunner(app)
     await runner.setup()
