@@ -40,21 +40,22 @@ async def run_image_bot_test_suite():
     assert "Welcome to Kayi Image to Link" in caption
     assert "Turn your images and supported files into shareable links in seconds" in caption
     assert "Quick link generation" in caption
+    assert "Need help? Use /help for instructions and feature guides." in caption
     assert "Send an image or file to begin" in caption
+    assert len(caption) < 1024, "Caption must fit within Telegram 1024 limit"
     print("  [PASS] 2. Verified exact welcome caption matching Phase 2.2 specifications.")
 
     # --------------------------------------------------------------------------
-    # 3. Welcome Keyboard Buttons & Targets
+    # 3. Welcome Keyboard Buttons & Targets (Simplified 2-row layout)
     # --------------------------------------------------------------------------
     markup = bot_module.build_welcome_keyboard()
     rows = markup.inline_keyboard
-    assert len(rows) == 3
-    assert rows[0][0].callback_data == "help:how_to_use"
-    assert rows[0][1].callback_data == "user:myuploads"
-    assert rows[1][0].callback_data == "help:main"
-    assert rows[1][1].url == "https://t.me/KayiBots"
-    assert rows[2][0].url == "https://t.me/qouba"
-    print("  [PASS] 3. Verified 3-row colored keyboard with Updates & Developer links.")
+    assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}"
+    assert rows[0][0].callback_data == "user:myuploads"
+    assert rows[0][0].style == "success"
+    assert rows[1][0].url == "https://t.me/KayiBots"
+    assert rows[1][1].url == "https://t.me/qouba"
+    print("  [PASS] 3. Verified simplified 2-row keyboard with My Uploads, Updates & Developer links.")
 
     # --------------------------------------------------------------------------
     # 4. Cinematic /start Video Delivery
@@ -254,7 +255,40 @@ async def run_image_bot_test_suite():
     assert len(commit) >= 4
     print("  [PASS] 12. Health endpoint reports live git commit hash accurately.")
 
-    print("\n[SUMMARY] ALL 12/12 Kayi Image to Link Bot Tests PASSED successfully!\n")
+    # --------------------------------------------------------------------------
+    # 13. Help Center Navigation & Section Handlers
+    # --------------------------------------------------------------------------
+    mock_msg_help = MagicMock()
+    mock_msg_help.from_user.id = USER_ID
+    mock_msg_help.reply = AsyncMock()
+    await bot_module.cmd_help(mock_msg_help)
+    assert mock_msg_help.reply.called
+    assert "Kayi Image to Link — Help Center" in str(mock_msg_help.reply.call_args)
+    reply_kb = mock_msg_help.reply.call_args[1].get("reply_markup") or mock_msg_help.reply.call_args[0][2]
+    cb_datas = [btn.callback_data for row in reply_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert "help:sec:start" in cb_datas
+    assert "help:sec:files" in cb_datas
+    assert "help:sec:manage" in cb_datas
+    assert "help:sec:sharing" in cb_datas
+    assert "help:sec:faq" in cb_datas
+    assert "home" in cb_datas
+
+    # Test section navigation
+    mock_cb_sec = MagicMock()
+    mock_cb_sec.from_user.id = USER_ID
+    mock_cb_sec.data = "help:sec:files"
+    mock_cb_sec.message.video = None
+    mock_cb_sec.message.edit_text = AsyncMock()
+    mock_cb_sec.answer = AsyncMock()
+    await bot_module.cb_help_section(mock_cb_sec)
+    assert mock_cb_sec.message.edit_text.called
+    assert "Supported Files & Upload Limits" in str(mock_cb_sec.message.edit_text.call_args)
+    sec_kb = mock_cb_sec.message.edit_text.call_args[1].get("reply_markup")
+    assert sec_kb.inline_keyboard[0][0].callback_data == "help:main"
+    assert sec_kb.inline_keyboard[0][0].text == "◀️ Back to Help"
+    print("  [PASS] 13. Unified Help Center, section callbacks, and Back to Help navigation verified.")
+
+    print("\n[SUMMARY] ALL 13/13 Kayi Image to Link Bot Tests PASSED successfully!\n")
 
 if __name__ == "__main__":
     asyncio.run(run_image_bot_test_suite())
