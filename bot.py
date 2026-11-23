@@ -318,70 +318,23 @@ WELCOME_CAPTION = (
     "<i>Send an image or file to begin.</i>"
 )
 
-HELP_MAIN_TEXT = (
-    "<b>Kayi Image to Link — Help Center</b> 📖\n\n"
-    "Welcome to the Kayi Image to Link Help Center. Choose a topic below to learn how to upload media, generate direct links and embed codes, and manage your files.\n\n"
-    "• <b>Getting Started:</b> Quick start and upload basics\n"
-    "• <b>Supported Files & Limits:</b> Formats, size limits, and quality tips\n"
-    "• <b>Managing Uploads:</b> Viewing history and deleting files\n"
-    "• <b>Sharing & Embed Codes:</b> Direct links, Markdown, HTML, and BBCode\n"
-    "• <b>Common Questions:</b> Privacy, link permanence, and troubleshooting\n\n"
-    "<i>Select a section below for details:</i>"
+HELP_TEXT = (
+    "<b>Kayi Image to Link — Help</b>\n\n"
+    "Turn images and supported files into shareable links.\n\n"
+    "<b>Getting Started</b>\n\n"
+    "✦ Send an image or supported file to the bot.\n\n"
+    "✦ Wait for your shareable link to be generated.\n\n"
+    "✦ Copy the link and share it wherever you need.\n\n"
+    "<b>Your Uploads</b>\n\n"
+    "Use <b>My Uploads</b> to access your previously uploaded files and links.\n\n"
+    "<b>Good to Know</b>\n\n"
+    "✦ Anyone with a working public link may be able to access the shared file.\n\n"
+    "✦ File availability and supported formats depend on the hosting service.\n\n"
+    "<b>Need Assistance?</b>\n\n"
+    "Contact @qouba if you encounter an issue."
 )
 
-HELP_SECTIONS = {
-    "start": (
-        "<b>Getting Started — Kayi Image to Link</b> 🚀\n\n"
-        "Convert any image, photo, sticker, or clip into a permanent high-speed direct link in seconds.\n\n"
-        "<b>Basic Workflow:</b>\n"
-        "1. Send or forward any image, GIF, or sticker directly into this chat.\n"
-        "2. The bot uploads the file immediately to high-speed cloud storage.\n"
-        "3. An upload card is returned with your direct URL and 1-tap copy button.\n"
-        "4. Share the direct link or copy ready-to-use embed codes for your website or forum."
-    ),
-    "files": (
-        "<b>Supported Files & Upload Limits</b> 📁\n\n"
-        "<b>Supported Formats:</b>\n"
-        "• <b>Photos & Images:</b> JPG, PNG, WebP, SVG, BMP\n"
-        "• <b>Animations & Clips:</b> GIFs and MP4 animation clips up to 200MB\n"
-        "• <b>Stickers:</b> Static and animated Telegram stickers\n\n"
-        "<b>Preserving Maximum Quality:</b>\n"
-        "Telegram compresses normal photos automatically. To keep 100% original uncompressed quality, send your image as a <b>Document (File)</b>."
-    ),
-    "manage": (
-        "<b>Managing Your Uploads</b> 📋\n\n"
-        "<b>Viewing Recent Uploads:</b>\n"
-        "• Send <code>/myuploads</code> or tap <b>📁 My Uploads</b> on the home screen.\n"
-        "• View your 5 most recent uploads with direct links and file sizes.\n\n"
-        "<b>Deleting Files:</b>\n"
-        "• Each upload response card includes a <b>🗑️ Delete File</b> button.\n"
-        "• Tapping it presents an interactive confirmation.\n"
-        "• When confirmed, the file is deleted from the database and deregistered from cloud storage.\n"
-        "• Users can only view and delete their own uploads."
-    ),
-    "sharing": (
-        "<b>Sharing Links & Embed Codes</b> 🔗\n\n"
-        "Every successful upload generates multiple share options:\n\n"
-        "• <b>Direct Link:</b> High-speed CDN link accessible worldwide.\n"
-        "• <b>Copy Link Button:</b> Native Telegram 1-tap clipboard copy.\n"
-        "• <b>Markdown 📝:</b> Ready-to-paste <code>![Alt](url)</code> format.\n"
-        "• <b>HTML Embed 💻:</b> Clean <code>&lt;img src=\"url\"&gt;</code> tag for websites.\n"
-        "• <b>BBCode 🏷️:</b> Forum tag format <code>[IMG]url[/IMG]</code>."
-    ),
-    "faq": (
-        "<b>Common Questions & FAQ</b> ❓\n\n"
-        "<b>Do links ever expire?</b>\n"
-        "No. Links remain active permanently as long as you do not delete them.\n\n"
-        "<b>Are my uploaded images public?</b>\n"
-        "Anyone who has the direct link can view the image, but links are unlisted and never published publicly.\n\n"
-        "<b>Is duplicate uploading prevented?</b>\n"
-        "Yes. The bot calculates unique file identifiers. If you upload an identical image, it returns the existing CDN link in milliseconds without re-uploading."
-    )
-}
-
-# Aliases for backwards compatibility
-HELP_TEXT = HELP_MAIN_TEXT
-HOW_TO_USE_TEXT = HELP_SECTIONS["start"]
+HELP_MAIN_TEXT = HELP_TEXT
 
 def build_welcome_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -394,33 +347,18 @@ def build_welcome_keyboard() -> InlineKeyboardMarkup:
         ]
     ])
 
-def build_help_main_keyboard() -> InlineKeyboardMarkup:
+def build_help_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="🚀 Getting Started", callback_data="help:sec:start"),
-            InlineKeyboardButton(text="📁 Supported Files", callback_data="help:sec:files")
-        ],
-        [
-            InlineKeyboardButton(text="📋 Managing Uploads", callback_data="help:sec:manage"),
-            InlineKeyboardButton(text="🔗 Sharing & Embeds", callback_data="help:sec:sharing")
-        ],
-        [
-            InlineKeyboardButton(text="❓ Common Questions", callback_data="help:sec:faq")
-        ],
-        [
-            InlineKeyboardButton(text="◀️ Back to Home", callback_data="home")
+            InlineKeyboardButton(text="👨‍💻 Developer", url=DEVELOPER_URL)
         ]
     ])
+
+def build_help_main_keyboard() -> InlineKeyboardMarkup:
+    return build_help_keyboard()
 
 def build_help_subpage_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="◀️ Back to Help", callback_data="help:main")
-        ]
-    ])
-
-def build_help_keyboard() -> InlineKeyboardMarkup:
-    return build_help_main_keyboard()
+    return build_help_keyboard()
 
 async def send_welcome_screen(bot: Bot, chat_id: int):
     """Sends the cinematic welcome screen using cached Telegram video file_id."""
@@ -719,24 +657,19 @@ async def cb_help_main(callback: types.CallbackQuery):
 @dp.callback_query(F.data.startswith("help:sec:"))
 async def cb_help_section(callback: types.CallbackQuery):
     await db.touch_user(callback.from_user.id)
-    sec_key = callback.data.split(":")[2]
-    text = HELP_SECTIONS.get(sec_key)
-    if not text:
-        await callback.answer("Section not found.", show_alert=True)
-        return
     if callback.message.video:
         try:
             await callback.message.edit_caption(
-                caption=text,
+                caption=HELP_TEXT,
                 parse_mode=ParseMode.HTML,
-                reply_markup=build_help_subpage_keyboard()
+                reply_markup=build_help_keyboard()
             )
             await callback.answer()
             return
         except TelegramBadRequest:
             pass
     try:
-        await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=build_help_subpage_keyboard())
+        await callback.message.edit_text(HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=build_help_keyboard())
     except TelegramBadRequest:
         pass
     await callback.answer()
@@ -744,22 +677,22 @@ async def cb_help_section(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "help:how_to_use")
 async def cb_how_to_use(callback: types.CallbackQuery):
     await db.touch_user(callback.from_user.id)
-    text = HELP_SECTIONS["start"]
     if callback.message.video:
         try:
             await callback.message.edit_caption(
-                caption=text,
+                caption=HELP_TEXT,
                 parse_mode=ParseMode.HTML,
-                reply_markup=build_help_subpage_keyboard()
+                reply_markup=build_help_keyboard()
             )
             await callback.answer()
             return
         except TelegramBadRequest:
             pass
     try:
-        await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=build_help_subpage_keyboard())
+        await callback.message.edit_text(HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=build_help_keyboard())
     except TelegramBadRequest:
         pass
+    await callback.answer()
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("embed:md:"))

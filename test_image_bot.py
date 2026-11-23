@@ -256,24 +256,27 @@ async def run_image_bot_test_suite():
     print("  [PASS] 12. Health endpoint reports live git commit hash accurately.")
 
     # --------------------------------------------------------------------------
-    # 13. Help Center Navigation & Section Handlers
+    # 13. Single-Message Help Center & Clean Layout
     # --------------------------------------------------------------------------
     mock_msg_help = MagicMock()
     mock_msg_help.from_user.id = USER_ID
     mock_msg_help.reply = AsyncMock()
     await bot_module.cmd_help(mock_msg_help)
     assert mock_msg_help.reply.called
-    assert "Kayi Image to Link — Help Center" in str(mock_msg_help.reply.call_args)
+    help_text_called = str(mock_msg_help.reply.call_args)
+    assert "Kayi Image to Link — Help" in help_text_called
+    assert "<b>Getting Started</b>" in help_text_called
+    assert "<b>Your Uploads</b>" in help_text_called
+    assert "<b>Good to Know</b>" in help_text_called
+    assert "<b>Need Assistance?</b>" in help_text_called
+    assert "✦" in help_text_called
+
+    # Verify no topic-navigation callback buttons exist (only optional Developer button)
     reply_kb = mock_msg_help.reply.call_args[1].get("reply_markup") or mock_msg_help.reply.call_args[0][2]
     cb_datas = [btn.callback_data for row in reply_kb.inline_keyboard for btn in row if btn.callback_data]
-    assert "help:sec:start" in cb_datas
-    assert "help:sec:files" in cb_datas
-    assert "help:sec:manage" in cb_datas
-    assert "help:sec:sharing" in cb_datas
-    assert "help:sec:faq" in cb_datas
-    assert "home" in cb_datas
+    assert len(cb_datas) == 0, "Single-message help center must not contain topic-navigation buttons"
 
-    # Test section navigation
+    # Test legacy callback handled gracefully without error
     mock_cb_sec = MagicMock()
     mock_cb_sec.from_user.id = USER_ID
     mock_cb_sec.data = "help:sec:files"
@@ -282,11 +285,8 @@ async def run_image_bot_test_suite():
     mock_cb_sec.answer = AsyncMock()
     await bot_module.cb_help_section(mock_cb_sec)
     assert mock_cb_sec.message.edit_text.called
-    assert "Supported Files & Upload Limits" in str(mock_cb_sec.message.edit_text.call_args)
-    sec_kb = mock_cb_sec.message.edit_text.call_args[1].get("reply_markup")
-    assert sec_kb.inline_keyboard[0][0].callback_data == "help:main"
-    assert sec_kb.inline_keyboard[0][0].text == "◀️ Back to Help"
-    print("  [PASS] 13. Unified Help Center, section callbacks, and Back to Help navigation verified.")
+    assert "Kayi Image to Link — Help" in str(mock_cb_sec.message.edit_text.call_args)
+    print("  [PASS] 13. Single-message Help Center, ✦ formatting, and graceful callback handling verified.")
 
     print("\n[SUMMARY] ALL 13/13 Kayi Image to Link Bot Tests PASSED successfully!\n")
 
