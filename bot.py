@@ -143,56 +143,34 @@ async def register_bot_commands(bot: Bot):
     except Exception as e:
         print(f"[commands] Failed to register commands: {e}")
 
-def get_latest_changes() -> list[str]:
+def _consume_restart_reason() -> str:
     reason_file = os.path.join(os.path.dirname(__file__), "restart_reason.txt")
-    if os.path.exists(reason_file):
-        try:
-            with open(reason_file, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-            os.remove(reason_file)
-            if content:
-                return [line.strip("-•* ").strip() for line in content.splitlines() if line.strip()]
-        except Exception:
-            pass
-
+    if not os.path.exists(reason_file):
+        return ""
     try:
-        import subprocess
-        raw = subprocess.check_output(
-            ["git", "log", "-1", "--pretty=%s%n%b"],
-            text=True, stderr=subprocess.DEVNULL
-        ).strip()
-        lines = [l.strip("-•* ").strip() for l in raw.splitlines() if l.strip()]
-        cleaned = []
-        for line in lines:
-            for prefix in ["feat:", "fix:", "chore:", "refactor:", "perf:", "docs:", "style:", "test:"]:
-                if line.lower().startswith(prefix):
-                    line = line[len(prefix):].strip()
-                    break
-            if line and len(line) > 3 and not line.startswith("Co-authored-by:") and not line.startswith("Signed-off-by:"):
-                cleaned.append(line[0].upper() + line[1:])
-            if len(cleaned) >= 3:
-                break
-        if cleaned:
-            return cleaned
+        with open(reason_file, "r", encoding="utf-8") as f:
+            content = " ".join(line.strip("-•* ").strip() for line in f.read().splitlines() if line.strip())
+        os.remove(reason_file)
+        return content
     except Exception:
-        pass
-
-    return ["Initial deployment of Kayi Image to Link Bot"]
+        return ""
 
 async def send_restart_notification(bot: Bot):
     if not OWNER_ID:
         return
 
-    changes = get_latest_changes()
-    changes_formatted = "\n".join(f"• {html.escape(c)}" for c in changes)
+    reason = _consume_restart_reason()
     now_str = datetime.now(IST).strftime("%I:%M %p IST · %b %d")
 
-    content = (
-        f"<b>{BRAND_NAME} Online 🟢</b>\n\n"
-        "<b>Changes in this Update:</b>\n"
-        f"{changes_formatted}\n\n"
-        f"<b>Time:</b> <code>{now_str}</code>"
-    )
+    lines = [
+        f"<b>{BRAND_NAME} Online 🟢</b>",
+        "",
+        "<b>Status:</b> Running smoothly",
+    ]
+    if reason:
+        lines.append(f"<b>Note:</b> {html.escape(reason)}")
+    lines.append(f"<b>Time:</b> <code>{now_str}</code>")
+    content = "\n".join(lines)
 
     targets = [OWNER_ID]
     if LOG_CHANNEL_ID:
